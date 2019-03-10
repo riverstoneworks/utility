@@ -5,11 +5,36 @@
  *      Author: Like.Z(sxpc722@aliyun.com)
  */
 
-
-#include "../../mem/flyweight/flyweight.h"
-
 #include <stdlib.h>
-#include<stdatomic.h>
+#include <stdio.h>
+#include <stdatomic.h>
+
+#include "utility/mem/flyweight.h"
+#define Element ut_fw_Element
+#define ElementPool ut_fw_ElementPool
+
+struct _ut_fw_Element{
+	Element * next;
+	void* data;
+};
+
+typedef struct _BLK Block;
+struct _BLK{
+	Block *next;
+	Element* eles;
+	void* data;
+	size_t s_ele;
+	unsigned int n_eles;
+};
+
+struct _ut_fw_ElementPool {
+	volatile atomic_intptr_t head; // @suppress("Type cannot be resolved")
+	volatile atomic_intptr_t end; // @suppress("Type cannot be resolved")
+	volatile atomic_intptr_t blocks; // @suppress("Type cannot be resolved")
+	unsigned int n_auto_inc;
+	unsigned short n_blocks;
+	unsigned short n_max_blocks;
+};
 
 static inline int push_from_end(ElementPool* pool,Element* h,Element* e){
 	e->next=NULL;
@@ -25,7 +50,7 @@ static inline int push_from_head(ElementPool* pool,Element* h, Element* e){
 	return 0;
 }
 
-//return number of elements left
+//return number of Elements left
 unsigned poolDec(ElementPool* pool){
 	//get lock
 	Block* b = (Block*)pool->blocks;
@@ -177,13 +202,13 @@ int poolInc(ElementPool* pool,unsigned n_eles,size_t s_ele){
 }
 
 
-ElementPool* newPool(size_t size_element,unsigned n_element,unsigned n_auto_inc,unsigned short n_max_blocks){
+ElementPool* newPool(size_t size_Element,unsigned n_Element,unsigned n_auto_inc,unsigned short n_max_blocks){
 	ElementPool* epl=calloc(1,sizeof(ElementPool));
 	if (epl) {
 		epl->n_max_blocks = n_max_blocks;
 		epl->n_auto_inc = n_auto_inc;
 
-		if(poolInc(epl,n_element,size_element))
+		if(poolInc(epl,n_Element,size_Element))
 			free(epl);
 		else{
 			epl->head=(intptr_t)((Block*)epl->blocks)->eles;
@@ -246,3 +271,31 @@ int destoryPool(ElementPool* pool){
 
 	return 0;
 }
+
+void showInfo(ElementPool* epl){
+	printf("blocks: %u\n"
+		"max_blocks: %u\n"
+		"auto_inc: %u\n"
+		"head: %p\n"
+		"end: %p\n"
+		"block: %p\n"
+		"n_element: %d\n"
+		"s_element: %ld\n"
+		"data: %p\n"
+		"ele: %p\n"
+		"next_block: %p\n\n",
+		epl->n_blocks,
+		epl->n_max_blocks,
+		epl->n_auto_inc,
+		(void*)epl->head,
+		(void*)epl->end,
+		(void*)epl->blocks,
+		((Block*)epl->blocks)->n_eles,
+		((Block*)epl->blocks)->s_ele,
+		((Block*)epl->blocks)->data,
+		((Block*)epl->blocks)->eles,
+		((Block*)epl->blocks)->next);
+}
+
+#undef Element
+#undef ElementPool

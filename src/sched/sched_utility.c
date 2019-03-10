@@ -5,9 +5,10 @@
  *      Author: Like.Z(sxpc722@aliyun.com)
  */
 
-#include "../sched/sched_utility.h"
 
 #include <stdio.h>
+#include <utility/sched/sched_utility.h>
+
 #ifndef __USE_GNU
 	#define __USE_GNU
 #endif
