@@ -9,26 +9,26 @@
 #include "utility/struct/iteration.h"
 
 typedef struct _iteration{
-	void* (*next)(ut_st_Iteration*);
+	const void* (*next)(ut_st_Iteration*);
 	struct{
-		void* container;
-		void* current;
-		void* (*next)(void* current,void* container);
+		const void* container;
+		const void* current;
+		const void* (*next)(const void* current, const void* container);
 	}p;
 }Iteration;
 
-static void* next(ut_st_Iteration* ite){
+static const void* next(ut_st_Iteration* ite){
 	Iteration *it=(Iteration*)ite;
 	return it->p.current=it->p.next(it->p.current,it->p.container);
 }
 
-ut_st_Iteration newIteration(void* container,void* (*_next)(void* current,void* container)){
+ut_st_Iteration newIteration(const void* container,const void* (*iterate)(const void* current, const void* container)){
 	ut_st_Iteration it={
 			.next=next,
 			.p={
 					container,
 					NULL,
-					_next
+					iterate
 			}
 	};
 	return it;

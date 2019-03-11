@@ -27,7 +27,7 @@ struct _ut_hm_HashMap{
 		void (*destroy)(ut_hm_HashMap* );
 		unsigned int (*getLength)(ut_hm_HashMap*);
 		unsigned int (*getCapacity)(ut_hm_HashMap*);
-		ut_hm_Entry* (*iterate)(ut_hm_Entry*,ut_hm_HashMap*);
+		const ut_hm_Entry* (*iterate)(const ut_hm_Entry*, const ut_hm_HashMap*);
 	}const * const op;
 };
 

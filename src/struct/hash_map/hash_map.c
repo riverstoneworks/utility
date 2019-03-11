@@ -181,13 +181,16 @@ static unsigned int getCap(HashMap* hm){
 	return ((struct _hashMapData*)hm->hmd)->cap;
 }
 
-static ut_hm_Entry* iterate(ut_hm_Entry* e,ut_hm_HashMap* hm){
+static const ut_hm_Entry* iterate(const ut_hm_Entry* e,const ut_hm_HashMap* hm){
 	struct _hashMapData *hmd=hm->hmd;
-	Entry* end=hmd->entrys+hmd->cap-1;
 	Entry* p=e;
+	if(p<hmd->entrys)
+		return NULL;
+
+	Entry* end=hmd->entrys+hmd->cap-1;
 	while(++p<=end){
 		if(p->key)
-			return e=p;
+			return p;
 	};
 	return NULL;
 }

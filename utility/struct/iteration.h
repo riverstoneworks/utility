@@ -13,5 +13,5 @@ typedef struct _ut_st_iteration{
 	const void *const p[3];
 }ut_st_Iteration;
 
-extern ut_st_Iteration newIteration( void* container,void* (*next)(void* current,void* container));
+extern ut_st_Iteration newIteration( const void* container,const void* (*next)(const void* current, const void* container));
 #endif /* STRUCT_ITERATION_ITERATION_H_ */
