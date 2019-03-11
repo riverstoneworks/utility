@@ -1,11 +1,8 @@
 /*
- ============================================================================
- Name        : Hash.c
- Author      : Like.Z
- Version     :
- Copyright   : Your copyright notice
- Description : Hello World in C, Ansi-style
- ============================================================================
+ * hash_map.c
+ *
+ *  Created on: Mar 2, 2019
+ *      Author: Like.Z(sxpc722@aliyun.com)
  */
 
 #include <stdlib.h>
@@ -13,9 +10,14 @@
 #include <stdatomic.h>
 
 #include <utility/struct/hash_map.h>
-#define HashMap ut_ht_HashMap
+#define HashMap ut_hm_HashMap
 
-typedef struct _ut_ht_entry Entry;
+typedef struct _Entry{
+	void* obj;
+	char* key;
+	size_t keySize;
+	struct _Entry* next;
+}Entry;
 
 struct _HashMap{
 	struct _hashMapData{
@@ -39,8 +41,10 @@ static void empty(HashMap* hm){
 		}
 	}
 
-	for(int i=0;i<hmd->cap-1;++i)
+	memset(hmd->entrys,0,sizeof(Entry)*hmd->cap);
+	for(int i=0;i<hmd->cap-1;++i){
 		hmd->entrys[i].next=hmd->entrys+i+1;
+	}
 
 	hmd->length=0;
 	memset((void*)hmd->list,0,sizeof(Entry*)*hmd->cap);
@@ -72,7 +76,7 @@ static inline Entry * index(Entry* en,const char* key,size_t keySize){
 	return en;
 }
 
-static Entry remove(HashMap* hm,const char* const key, const size_t keySize){
+static ut_hm_Entry remove(HashMap* hm,const char* const key, const size_t keySize){
 	struct _hashMapData* hmd=hm->hmd;
 
 	int ind=hashCode(key,keySize)%hmd->cap;
@@ -103,8 +107,8 @@ static Entry remove(HashMap* hm,const char* const key, const size_t keySize){
 			_e.key=e->key;
 			_e.keySize=e->keySize;
 			_e.obj=e->obj;
-			_e.next=NULL;
 
+			e->key=NULL;
 			do{
 				e->next=(Entry*)hmd->head;
 			}while(!atomic_compare_exchange_strong(&hmd->head,(intptr_t*)(&(e->next)),(intptr_t)e));
@@ -112,12 +116,12 @@ static Entry remove(HashMap* hm,const char* const key, const size_t keySize){
 			hmd->length++;
 			//unlock
 			hmd->list[ind] = i;
-			return _e;
+			return (ut_hm_Entry){_e.obj,_e.key,_e.keySize};
 		} else
 			//unlock
 			hmd->list[ind] = i;
 	}
-	return (Entry){0};
+	return (ut_hm_Entry){0};
 }
 
 static int put(HashMap* hm,void* obj,const char* const key, const size_t keySize){
@@ -154,7 +158,7 @@ static int put(HashMap* hm,void* obj,const char* const key, const size_t keySize
 	}
 }
 
-static void * get(HashMap* hm,const char* key,size_t keySize){
+static void * get(HashMap* hm,const char* const key,size_t keySize){
 	struct _hashMapData* hmd=hm->hmd;
 
 	int ind=hashCode(key,keySize)%hmd->cap;
@@ -177,7 +181,18 @@ static unsigned int getCap(HashMap* hm){
 	return ((struct _hashMapData*)hm->hmd)->cap;
 }
 
-ut_ht_HashMap * hashMapCreate(unsigned int cap){
+static ut_hm_Entry* iterate(ut_hm_Entry* e,ut_hm_HashMap* hm){
+	struct _hashMapData *hmd=hm->hmd;
+	Entry* end=hmd->entrys+hmd->cap-1;
+	Entry* p=e;
+	while(++p<=end){
+		if(p->key)
+			return e=p;
+	};
+	return NULL;
+}
+
+ut_hm_HashMap * hashMapCreate(unsigned int cap){
 	if(cap<2)
 		return NULL;
 //	printf("%lu\n",sizeof(HashTableData));
@@ -188,7 +203,7 @@ ut_ht_HashMap * hashMapCreate(unsigned int cap){
 		goto ec;
 
 	if(	!(hm->hmd->list = calloc(cap, sizeof(Entry*)))||
-		!(*(Entry**)(&(hm->hmd->entrys)) = malloc(sizeof(Entry) * cap)))
+		!(*(Entry**)(&(hm->hmd->entrys)) = calloc(cap, sizeof(Entry))))
 		goto ec_d;
 
 	*((unsigned*)(&(hm->hmd->cap)))=cap;
@@ -204,7 +219,9 @@ ut_ht_HashMap * hashMapCreate(unsigned int cap){
 			.empty = empty,
 			.destroy = destroy,
 			.getLength = getLength,
-			.getCapacity = getCap
+			.getCapacity = getCap,
+			.remove=remove,
+			.iterate=iterate
 	};
 	hm->op=&OP;
 	return hm;
