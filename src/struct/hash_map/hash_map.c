@@ -27,7 +27,7 @@ struct _HashMap{
 		volatile atomic_uint length; // @suppress("Type cannot be resolved")
 		const unsigned int cap;
 	}* hmd;
-	const struct _hashmap_op* op;
+	const struct _ut_hm_hashmap_op* op;
 };
 
 
@@ -216,7 +216,7 @@ ut_hm_HashMap * hashMapCreate(unsigned int cap){
 		hm->hmd->entrys[i].next=hm->hmd->entrys+i+1;
 
 	hm->hmd->head=(intptr_t)hm->hmd->entrys;
-	static const struct _hashmap_op OP = {
+	static const struct _ut_hm_hashmap_op OP = {
 			.get = get,
 			.put = put,
 			.empty = empty,

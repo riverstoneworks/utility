@@ -27,7 +27,7 @@ struct _BLK{
 	unsigned int n_eles;
 };
 
-struct _ut_fw_ElementPool {
+struct _pool{
 	volatile atomic_intptr_t head; // @suppress("Type cannot be resolved")
 	volatile atomic_intptr_t end; // @suppress("Type cannot be resolved")
 	volatile atomic_intptr_t blocks; // @suppress("Type cannot be resolved")
@@ -36,14 +36,16 @@ struct _ut_fw_ElementPool {
 	unsigned short n_max_blocks;
 };
 
-static inline int push_from_end(ElementPool* pool,Element* h,Element* e){
+static inline int push_from_end(ElementPool* epl,Element* h,Element* e){
+	struct _pool* pool=epl->d;
 	e->next=NULL;
 	Element* p=(Element*)atomic_exchange(&(pool->end),(intptr_t)e);
 	p->next=h;
 	return 0;
 }
 
-static inline int push_from_head(ElementPool* pool,Element* h, Element* e){
+static inline int push_from_head(ElementPool* epl,Element* h, Element* e){
+	struct _pool* pool=epl->d;
 	e->next=NULL;
 	Element* p=(Element*)atomic_exchange(&(pool->head),(intptr_t)h);
 	e->next=p;
@@ -51,7 +53,8 @@ static inline int push_from_head(ElementPool* pool,Element* h, Element* e){
 }
 
 //return number of Elements left
-unsigned poolDec(ElementPool* pool){
+unsigned poolDec(ElementPool* epl){
+	struct _pool* pool=epl->d;
 	//get lock
 	Block* b = (Block*)pool->blocks;
 	if (b < 0)
@@ -156,7 +159,8 @@ unsigned poolDec(ElementPool* pool){
 
 }
 
-int poolInc(ElementPool* pool,unsigned n_eles,size_t s_ele){
+int poolInc(ElementPool* epl,unsigned n_eles,size_t s_ele){
+	struct _pool* pool=epl->d;
 	//get lock
 	intptr_t b=pool->blocks;
 	if(b<0)
@@ -202,25 +206,8 @@ int poolInc(ElementPool* pool,unsigned n_eles,size_t s_ele){
 }
 
 
-ElementPool* newPool(size_t size_Element,unsigned n_Element,unsigned n_auto_inc,unsigned short n_max_blocks){
-	ElementPool* epl=calloc(1,sizeof(ElementPool));
-	if (epl) {
-		epl->n_max_blocks = n_max_blocks;
-		epl->n_auto_inc = n_auto_inc;
-
-		if(poolInc(epl,n_Element,size_Element))
-			free(epl);
-		else{
-			epl->head=(intptr_t)((Block*)epl->blocks)->eles;
-			return epl;
-		}
-	}
-
-	return NULL;
-}
-
-Element * eleAlloc(ElementPool* pool){
-
+Element * eleAlloc(ElementPool* epl){
+	struct _pool* pool=epl->d;
 	Element* e;
 	while(1){
 		e=(Element*)pool->head;
@@ -238,7 +225,8 @@ Element * eleAlloc(ElementPool* pool){
 
 }
 
-int eleRec(ElementPool* pool, Element* e){
+int eleRec(ElementPool* epl, Element* e){
+	struct _pool* pool=epl->d;
 	const Block* b=(Block*)pool->blocks;
 	const int half=pool->n_blocks/2;
 	int i=b>0?0:half;
@@ -253,7 +241,8 @@ int eleRec(ElementPool* pool, Element* e){
 	return 0;
 }
 
-int destoryPool(ElementPool* pool){
+int destoryPool(ElementPool* epl){
+	struct _pool* pool=epl->d;
 	Block* b=(Block*)pool->blocks,*t;
 	if(b<0)
 		return -1;
@@ -272,7 +261,8 @@ int destoryPool(ElementPool* pool){
 	return 0;
 }
 
-void showInfo(ElementPool* epl){
+void showInfo(ut_fw_ElementPool* epl){
+	struct _pool* pool=epl->d;
 	printf("blocks: %u\n"
 		"max_blocks: %u\n"
 		"auto_inc: %u\n"
@@ -284,17 +274,44 @@ void showInfo(ElementPool* epl){
 		"data: %p\n"
 		"ele: %p\n"
 		"next_block: %p\n\n",
-		epl->n_blocks,
-		epl->n_max_blocks,
-		epl->n_auto_inc,
-		(void*)epl->head,
-		(void*)epl->end,
-		(void*)epl->blocks,
-		((Block*)epl->blocks)->n_eles,
-		((Block*)epl->blocks)->s_ele,
-		((Block*)epl->blocks)->data,
-		((Block*)epl->blocks)->eles,
-		((Block*)epl->blocks)->next);
+		pool->n_blocks,
+		pool->n_max_blocks,
+		pool->n_auto_inc,
+		(void*)pool->head,
+		(void*)pool->end,
+		(void*)pool->blocks,
+		((Block*)pool->blocks)->n_eles,
+		((Block*)pool->blocks)->s_ele,
+		((Block*)pool->blocks)->data,
+		((Block*)pool->blocks)->eles,
+		((Block*)pool->blocks)->next);
+}
+
+ut_fw_ElementPool* newPool(size_t size_Element,unsigned n_Element,unsigned n_auto_inc,unsigned short n_max_blocks){
+	ElementPool* epl=calloc(1,sizeof(ElementPool));
+	struct _pool* pool=epl->d;
+	if (epl) {
+		pool->n_max_blocks = n_max_blocks;
+		pool->n_auto_inc = n_auto_inc;
+
+		if(poolInc(epl,n_Element,size_Element))
+			free(epl);
+		else{
+			pool->head=(intptr_t)((Block*)pool->blocks)->eles;
+			static struct _ut_fw_ElementPool_op OP={
+					.destoryPool=destoryPool,
+					.eleAlloc=eleAlloc,
+					.eleRec=eleRec,
+					.poolDec=poolDec,
+					.poolInc=poolInc,
+					.showInfo=showInfo
+			};
+			*((struct _ut_fw_ElementPool_op**)(&epl->op))=&OP;
+			return epl;
+		}
+	}
+
+	return NULL;
 }
 
 #undef Element

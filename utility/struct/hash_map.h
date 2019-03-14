@@ -17,18 +17,18 @@ typedef struct _ut_hm_entry{
 
 
 struct _ut_hm_HashMap{
-	const void* const hmd;
-	struct _hashmap_op{
-		int (*init)(void** hmd, unsigned int cap);
-		int (*put)(ut_hm_HashMap* ,void* val,const char* const key,const size_t keySize);
-		void *(*get)(ut_hm_HashMap* ,const char* const key,const size_t keySize);
-		void (*empty)(ut_hm_HashMap* );
-		ut_hm_Entry (*remove)(ut_hm_HashMap* ,const char* const key,const size_t keySize);
-		void (*destroy)(ut_hm_HashMap* );
-		unsigned int (*getLength)(ut_hm_HashMap*);
-		unsigned int (*getCapacity)(ut_hm_HashMap*);
-		const ut_hm_Entry* (*iterate)(const ut_hm_Entry*, const ut_hm_HashMap*);
+	struct _ut_hm_hashmap_op{
+		int (* const init)(void** hmd, unsigned int cap);
+		int (* const put)(ut_hm_HashMap* ,void* val,const char* const key,const size_t keySize);
+		void *(* const get)(ut_hm_HashMap* ,const char* const key,const size_t keySize);
+		void (* const empty)(ut_hm_HashMap* );
+		ut_hm_Entry (* const remove)(ut_hm_HashMap* ,const char* const key,const size_t keySize);
+		void (* const destroy)(ut_hm_HashMap* );
+		unsigned int (* const getLength)(ut_hm_HashMap*);
+		unsigned int (* const getCapacity)(ut_hm_HashMap*);
+		const ut_hm_Entry* (* const iterate)(const ut_hm_Entry*, const ut_hm_HashMap*);
 	}const * const op;
+	const void* const hmd;
 };
 
 extern ut_hm_HashMap * hashMapCreate(unsigned int cap);
