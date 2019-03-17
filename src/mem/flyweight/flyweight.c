@@ -111,29 +111,29 @@ unsigned poolDec(ElementPool* epl){
 
 		free(bc);
 
-		while(bb){
-			if(bcN.num>=pool->n_auto_inc){
-				free(bb->eles);
-				Block * t=bb;
-				bb=bb->next;
-				free(t);
-			}else{
-				*(bb->eles+(bb->n_eles-1) * bb->s_ele)=(intptr_t)bcN.h;
-				bcN.h=bb->eles;
-				bcN.num+=bb->n_eles;
+		while (bb && bcN.num < pool->n_auto_inc) {
+			*(bb->eles + (bb->n_eles - 1) * bb->s_ele) = (intptr_t) bcN.h;
+			bcN.h = bb->eles;
+			bcN.num += bb->n_eles;
 
-				if(!bcN.e)
-					bcN.e=bb->eles+ (bb->n_eles-1)* bb->s_ele;
+			if (!bcN.e)
+				bcN.e = bb->eles + (bb->n_eles - 1) * bb->s_ele;
 
-				Block *t=bb;
-				bb=bb->next;
-				t->next=b;
-				b=t;
-			}
+			Block *t = bb;
+			bb = bb->next;
+			t->next = b;
+			b = t;
 		}
 
 		if(bcN.num>0)
 			push(&pool->left,bcN.h,bcN.e);
+
+		while (bb) {
+			free(bb->eles);
+			Block * t = bb;
+			bb = bb->next;
+			free(t);
+		}
 
 		pool->blocks=(intptr_t)b; //unlock
 
@@ -141,7 +141,8 @@ unsigned poolDec(ElementPool* epl){
 	}else{
 		pool->blocks = (intptr_t)b; //unlock
 
-		return 0;
+		//error: lack of memory
+		return -3;
 	}
 
 }
