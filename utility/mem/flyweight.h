@@ -14,7 +14,7 @@ struct _ut_fw_ElementPool{
 		void* (* const eleAlloc)(ut_fw_ElementPool*);
 		void (* const eleRec)(ut_fw_ElementPool*,void const * const);
 		int (* const poolInc)(ut_fw_ElementPool*,unsigned n_eles,size_t s_ele);
-		unsigned (* const poolDec)(ut_fw_ElementPool*);
+		long (* const poolDec)(ut_fw_ElementPool*);
 		int (* const destoryPool)(ut_fw_ElementPool*);
 		void (* const showInfo)(ut_fw_ElementPool*);
 	}const *const op;

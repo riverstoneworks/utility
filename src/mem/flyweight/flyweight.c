@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <stdatomic.h>
 
-#include "utility/mem/flyweight.h"
+#include <utility/mem/flyweight.h>
 #define ElementPool ut_fw_ElementPool
 
 typedef struct _BLK{
@@ -30,7 +30,7 @@ struct _pool{
 static inline void push(volatile atomic_intptr_t* const top,intptr_t * const h, intptr_t * const e){ // @suppress("Type cannot be resolved")
 	do{
 		*e=(*top);
-	}while(!atomic_compare_exchange_strong(top,e,*h));
+	}while(!atomic_compare_exchange_strong(top,e,(intptr_t)h));
 }
 
 static inline void* pop(volatile atomic_intptr_t* const top){ // @suppress("Type cannot be resolved")
@@ -38,12 +38,13 @@ static inline void* pop(volatile atomic_intptr_t* const top){ // @suppress("Type
 	do{
 		if(!(e=*top))
 			return NULL;
-	}while(!atomic_compare_exchange_strong(top,&e,e));
+	}while(!atomic_compare_exchange_strong(top,&e,*((intptr_t*)e)));
+	*((intptr_t*)e)=NULL;
 	return (void*)e;
 }
 
 //return number of Elements left
-unsigned poolDec(ElementPool* epl){
+long poolDec(ElementPool* epl){
 	struct _pool* pool=epl->d;
 	//get lock
 	Block* b = (Block*)pool->blocks;
@@ -63,18 +64,20 @@ unsigned poolDec(ElementPool* epl){
 		intptr_t* e;
 		unsigned cap;
 		unsigned num;
-	}*bc,bcN={0};
+	}*bc,bcN={.h=NULL,.e=NULL,.num=0};
 
 	if((bc=calloc(pool->n_blocks,sizeof(struct _bc)))){
-		Block* bb=b;
+		//init bc[]
+		Block* fb=b;
 		for(int i=0;i<pool->n_blocks;++i){
-			bc[i].addr_blk=bb;
-			bc[i].addrs=bb->eles;
-			bc[i].addrf=bb->eles+bb->s_ele*bb->n_eles;
-			bc[i].cap=bb->n_eles;
-			bb=bb->next;
+			bc[i].addr_blk=fb;
+			bc[i].addrs=fb->eles;
+			bc[i].addrf=(intptr_t*)((intptr_t)fb->eles+fb->s_ele*fb->n_eles);
+			bc[i].cap=fb->n_eles;
+			fb=fb->next;
 		}
 
+		//statistics
 		intptr_t* e;
 		while((e=pop(&pool->left))){
 			for(int i=0;i<pool->n_blocks;++i){
@@ -89,12 +92,13 @@ unsigned poolDec(ElementPool* epl){
 			}
 		}
 
-
-		b=bb=NULL;
+		//sort: full(fb) or not(b)
+		b=fb=NULL;
 		for(int i=0;i<pool->n_blocks;++i){
+//			printf("%d:%d ; ",bc[i].cap,bc[i].num);
 			if(bc[i].cap==bc[i].num){
-				bc[i].addr_blk->next=bb;
-				bb=bc[i].addr_blk;
+				bc[i].addr_blk->next=fb;
+				fb=bc[i].addr_blk;
 			}else{
 				bc[i].addr_blk->next=b;
 				b=bc[i].addr_blk;
@@ -110,29 +114,30 @@ unsigned poolDec(ElementPool* epl){
 		}
 
 		free(bc);
-
-		while (bb && bcN.num < pool->n_auto_inc) {
-			*(bb->eles + (bb->n_eles - 1) * bb->s_ele) = (intptr_t) bcN.h;
-			bcN.h = bb->eles;
-			bcN.num += bb->n_eles;
+		//left enough element
+		while (fb && bcN.num < pool->n_auto_inc) {
+			*((intptr_t*)((intptr_t)fb->eles + (fb->n_eles - 1) * fb->s_ele)) = (intptr_t) bcN.h;
+			bcN.h = fb->eles;
+			bcN.num += fb->n_eles;
 
 			if (!bcN.e)
-				bcN.e = bb->eles + (bb->n_eles - 1) * bb->s_ele;
+				bcN.e = (intptr_t)fb->eles + (fb->n_eles - 1) * fb->s_ele;
 
-			Block *t = bb;
-			bb = bb->next;
+			Block *t = fb;
+			fb = fb->next;
 			t->next = b;
 			b = t;
 		}
 
 		if(bcN.num>0)
 			push(&pool->left,bcN.h,bcN.e);
-
-		while (bb) {
-			free(bb->eles);
-			Block * t = bb;
-			bb = bb->next;
+		//free needless blocks
+		while (fb) {
+			free(fb->eles);
+			Block * t = fb;
+			fb = fb->next;
 			free(t);
+			--(pool->n_blocks);
 		}
 
 		pool->blocks=(intptr_t)b; //unlock
@@ -174,14 +179,14 @@ int poolInc(ElementPool* epl,unsigned n_eles,size_t s_ele){
 
 	int i = -1;
 	while (++i < (n_eles - 1)) {
-		*((void**)(blk->eles + i*(blk->s_ele))) = (blk->eles + (i+1)*(blk->s_ele));
+		*((intptr_t*)((intptr_t)blk->eles + i*(blk->s_ele))) = ((intptr_t)blk->eles + (i+1)*(blk->s_ele));
 	}
-	*((void**)(blk->eles + i*(blk->s_ele)))  = NULL;
+	*((intptr_t*)((intptr_t)blk->eles + i*(blk->s_ele)))  = NULL;
 
 
 	blk->next = (Block*)b;
 
-	push(&pool->left, blk->eles, blk->eles + (n_eles - 1)*blk->s_ele);
+	push(&pool->left, blk->eles, (intptr_t*)((intptr_t)blk->eles + (n_eles - 1)*blk->s_ele));
 
 	pool->n_blocks++;
 	pool->blocks = (intptr_t)blk;	//unlock
@@ -196,8 +201,8 @@ void * eleAlloc(ElementPool* epl){
 	void* e;
 	while(1){
 		if((e=pop(&pool->left))){
-				void* r=e+sizeof(void*);
-				return r;
+			void* r = e + sizeof(void*);
+			return r;
 		}else if(-1>poolInc(epl,pool->n_auto_inc,((Block*)pool->blocks)->s_ele-sizeof(void*)))
 			return NULL;
 	}
@@ -224,7 +229,7 @@ int destoryPool(ElementPool* epl){
 		free(b);
 		b=t;
 	}
-	free(pool);
+	free(epl);
 
 	return 0;
 }
