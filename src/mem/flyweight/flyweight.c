@@ -11,7 +11,7 @@
 
 #include <utility/mem/flyweight.h>
 #define ElementPool ut_fw_ElementPool
-
+#define ele_addr_ind(blk,ind) (((intptr_t)blk->eles)+blk->s_ele*(ind))
 typedef struct _BLK{
 	struct _BLK *next;
 	intptr_t* eles;			//size = data+next_pointer
@@ -72,7 +72,7 @@ long poolDec(ElementPool* epl){
 		for(int i=0;i<pool->n_blocks;++i){
 			bc[i].addr_blk=fb;
 			bc[i].addrs=fb->eles;
-			bc[i].addrf=(intptr_t*)((intptr_t)fb->eles+fb->s_ele*fb->n_eles);
+			bc[i].addrf=(intptr_t*)ele_addr_ind(fb,fb->n_eles);
 			bc[i].cap=fb->n_eles;
 			fb=fb->next;
 		}
@@ -116,12 +116,13 @@ long poolDec(ElementPool* epl){
 		free(bc);
 		//left enough element
 		while (fb && bcN.num < pool->n_auto_inc) {
-			*((intptr_t*)((intptr_t)fb->eles + (fb->n_eles - 1) * fb->s_ele)) = (intptr_t) bcN.h;
+			intptr_t* end=(intptr_t*)ele_addr_ind(fb,fb->n_eles-1);
+			*end= (intptr_t) bcN.h;
 			bcN.h = fb->eles;
 			bcN.num += fb->n_eles;
 
 			if (!bcN.e)
-				bcN.e = (intptr_t)fb->eles + (fb->n_eles - 1) * fb->s_ele;
+				bcN.e = end;
 
 			Block *t = fb;
 			fb = fb->next;
@@ -179,14 +180,14 @@ int poolInc(ElementPool* epl,unsigned n_eles,size_t s_ele){
 
 	int i = -1;
 	while (++i < (n_eles - 1)) {
-		*((intptr_t*)((intptr_t)blk->eles + i*(blk->s_ele))) = ((intptr_t)blk->eles + (i+1)*(blk->s_ele));
+		*((intptr_t*)ele_addr_ind(blk,i)) = ele_addr_ind(blk,i+1);
 	}
-	*((intptr_t*)((intptr_t)blk->eles + i*(blk->s_ele)))  = NULL;
+	*((intptr_t*)ele_addr_ind(blk,i))  = NULL;
 
 
 	blk->next = (Block*)b;
 
-	push(&pool->left, blk->eles, (intptr_t*)((intptr_t)blk->eles + (n_eles - 1)*blk->s_ele));
+	push(&pool->left, blk->eles, (intptr_t*)ele_addr_ind(blk,n_eles-1));
 
 	pool->n_blocks++;
 	pool->blocks = (intptr_t)blk;	//unlock
