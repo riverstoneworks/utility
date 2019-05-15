@@ -39,12 +39,12 @@ static inline void* pop(volatile atomic_intptr_t* const top){ // @suppress("Type
 		if(!(e=*top))
 			return NULL;
 	}while(!atomic_compare_exchange_strong(top,&e,*((intptr_t*)e)));
-	*((intptr_t*)e)=NULL;
+	*((void**)e)=NULL;
 	return (void*)e;
 }
 
 //return number of Elements left
-long poolDec(ElementPool* epl){
+static long poolDec(ElementPool* epl){
 	struct _pool* pool=epl->d;
 	//get lock
 	Block* b = (Block*)pool->blocks;
@@ -153,7 +153,7 @@ long poolDec(ElementPool* epl){
 
 }
 
-int poolInc(ElementPool* epl,unsigned n_eles,size_t s_ele){
+static int poolInc(ElementPool* epl,unsigned n_eles,size_t s_ele){
 	struct _pool* pool=epl->d;
 	//get lock
 	intptr_t b=pool->blocks;
@@ -196,7 +196,7 @@ int poolInc(ElementPool* epl,unsigned n_eles,size_t s_ele){
 }
 
 
-void * eleAlloc(ElementPool* epl){
+static void * eleAlloc(ElementPool* epl){
 	struct _pool* pool=epl->d;
 
 	void* e;
@@ -209,14 +209,14 @@ void * eleAlloc(ElementPool* epl){
 	}
 }
 
-void eleRec(ElementPool* epl,  const void * const d){
+static void eleRec(ElementPool* epl,  const void * const d){
 	struct _pool* pool=epl->d;
 
 	intptr_t* e=(intptr_t*)(d-sizeof(void*));
 	push(&(pool->left),e,e);
 }
 
-int destoryPool(ElementPool* epl){
+static int destoryPool(ElementPool* epl){
 	struct _pool* pool=epl->d;
 	Block* b=(Block*)pool->blocks,*t;
 	if(b<0)
@@ -235,7 +235,7 @@ int destoryPool(ElementPool* epl){
 	return 0;
 }
 
-void showInfo(ut_fw_ElementPool* epl){
+static void showInfo(ut_fw_ElementPool* epl){
 	struct _pool* pool=epl->d;
 	printf("blocks: %u\n"
 		"max_blocks: %u\n"
@@ -275,7 +275,7 @@ ut_fw_ElementPool* newPool(size_t size_Element,unsigned n_Element,unsigned n_aut
 					.poolInc=poolInc,
 					.showInfo=showInfo
 			};
-			*((struct _ut_fw_ElementPool_op**)(&epl->op))=&OP;
+			*((struct _ut_fw_ElementPool_op**)(&epl->o))=&OP;
 			return epl;
 		}
 	}

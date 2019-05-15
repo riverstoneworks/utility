@@ -17,7 +17,7 @@ struct _ut_fw_ElementPool{
 		long (* const poolDec)(ut_fw_ElementPool*);
 		int (* const destoryPool)(ut_fw_ElementPool*);
 		void (* const showInfo)(ut_fw_ElementPool*);
-	}const *const op;
+	}const *const o;
 	const int d[sizeof(intptr_t)/sizeof(int)*2+2];
 };
 
