@@ -24,16 +24,16 @@ typedef struct{
 
 typedef struct _sem_sched_ut Sem_sched_ut;
 struct _sem_sched_ut{
-	struct _sem_op{
-		bool (*read)(Sem_sched_ut*);
-		bool (*write)(Sem_sched_ut*);
-		bool (*wait)(Sem_sched_ut*,Waiter);
+	struct _sem const * d;
+	struct _op_sem_sched_ut{
+		bool (*read)(Sem_sched_ut);
+		bool (*write)(Sem_sched_ut);
+		bool (*wait)(Sem_sched_ut,Waiter);
 		int (* destory)(Sem_sched_ut*);
-		unsigned long (*showVal)(Sem_sched_ut*);
-	}const * const o;
-	const intptr_t d[6];
+		unsigned long (*showVal)(Sem_sched_ut);
+	}const * o;
 };
 
-Sem_sched_ut* newSem(unsigned long init,unsigned long max, Awakener aw);
+extern Sem_sched_ut newSem(unsigned long init,unsigned long max, Awakener aw);
 
 #endif /* SCHED_SEMAPHORE_ENHC_H_ */

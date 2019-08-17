@@ -94,30 +94,30 @@ unsigned long showVal(struct _sem *sem){
 }
 
 static inline void sem(struct _sem **sem){
-	static ut_fw_ElementPool* pool=NULL;
-	if(!pool&&
-			!(pool=newPool(sizeof(struct _sem),8,8,8)))
+	static ut_fw_ElementPool pool={NULL,NULL};
+	if(!pool.d&&
+			!(pool=newPool(sizeof(struct _sem),8,8,8)).d)
 		return;
 
 	if(*sem){
-		pool->o->eleRec(pool,*sem);
+		pool.o->eleRec(pool,*sem);
 		*sem=NULL;
 	}else
-		(*sem)=pool->o->eleAlloc(pool);
+		(*sem)=pool.o->eleAlloc(pool);
 
 }
 
 static void waiter(Waiter** waiter){
-	static ut_fw_ElementPool* pool;
-	if(!pool&&
-			!(pool=newPool(sizeof(Waiter),8,8,8)))
+	static ut_fw_ElementPool pool={NULL,NULL};
+	if(!pool.d&&
+			!(pool=newPool(sizeof(Waiter),8,8,8)).d)
 		return;
 
 	if(*waiter){
-		pool->o->eleRec(pool,*waiter);
+		pool.o->eleRec(pool,*waiter);
 		*waiter=NULL;
 	}else
-		*waiter=pool->o->eleAlloc(pool);
+		*waiter=pool.o->eleAlloc(pool);
 }
 
 static int read_num_wait(struct _sem *sem,unsigned long dec,Waiter wa){
@@ -192,7 +192,14 @@ static void destory(struct _sem** s){
 		sem(s);
 }
 
-Sem_sched_ut* newSem(unsigned long init,unsigned long max, Awakener aw){
+Sem_sched_ut newSem(unsigned long init,unsigned long max, Awakener aw){
+	static struct _op_sem_sched_ut const OP = {
+			.read =	(bool (*)(Sem_sched_ut)) read,
+			.write = (bool (*)(Sem_sched_ut)) write,
+			.wait = (bool (*)(Sem_sched_ut,Waiter)) wait,
+			.destory = (int (*)(Sem_sched_ut*)) destory,
+			.showVal = (unsigned long (*)(Sem_sched_ut)) showVal
+	};
 	struct _sem* s=NULL;
 	sem(&s);
 	if(s){
@@ -201,14 +208,9 @@ Sem_sched_ut* newSem(unsigned long init,unsigned long max, Awakener aw){
 		*((unsigned long*)&(s->max))=max;
 		s->s=init;
 		s->waiting_to_read=s->waiting_to_write=0;
-		static  struct _sem_op const OP={
-				.read=(bool (*)(Sem_sched_ut*))read,
-				.write=(bool (*)(Sem_sched_ut*))write,
-				.wait=(bool (*)(Sem_sched_ut*,Waiter))wait,
-				.destory=(int (*)(Sem_sched_ut**))destory,
-				.showVal=(unsigned long (*)(Sem_sched_ut*))showVal,
-		};
-		*(struct _sem_op const**)&(((Sem_sched_ut*)s)->o)=&OP;
 	}
-	return (Sem_sched_ut*)s;
+	return (Sem_sched_ut){
+		.d=s,
+		.o=&OP
+	};
 }

@@ -67,7 +67,7 @@ static inline unsigned long long hashCode(const char* key,size_t keySize){
 }
 
 //Find out its address if it exists, if not, return an address where it can be stored
-static inline Entry * index(Entry* en,const char* key,size_t keySize){
+static inline Entry * indx(Entry* en,const char* key,size_t keySize){
 	while (en) {
 		if (!(en->keySize == keySize ? memcmp(en->key, key, keySize) : 1))
 			break;
@@ -133,7 +133,7 @@ static int put(HashMap* hm,void* obj,const char* const key, const size_t keySize
 			i=hmd->list[ind];
 	}
 
-	Entry * en=index((Entry*)i,key,keySize);
+	Entry * en=indx((Entry*)i,key,keySize);
 	if(en!=NULL){
 		en->obj=obj;
 		hmd->list[ind]=i;
@@ -167,7 +167,7 @@ static void * get(HashMap* hm,const char* const key,size_t keySize){
 			i=hmd->list[ind];
 	}
 
-	Entry* e=index((Entry*)i,key,keySize);
+	Entry* e=indx((Entry*)i,key,keySize);
 
 	hmd->list[ind]=i;
 	return e?e->obj:NULL;

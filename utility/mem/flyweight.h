@@ -10,19 +10,31 @@
 #include <stdint.h>
 typedef struct _ut_fw_ElementPool ut_fw_ElementPool;
 struct _ut_fw_ElementPool{
+	struct _pool const*  d;
 	struct _ut_fw_ElementPool_op{
-		void* (* const eleAlloc)(ut_fw_ElementPool*);
-		void (* const eleRec)(ut_fw_ElementPool*,void const * const);
-		int (* const poolInc)(ut_fw_ElementPool*,const unsigned n_eles, const size_t s_ele);
-		long (* const poolDec)(ut_fw_ElementPool*);
-		int (* const destoryPool)(ut_fw_ElementPool*);
-		void (* const showInfo)(ut_fw_ElementPool*);
-	}const *const o;
-	const int d[sizeof(intptr_t)/sizeof(int)*2+2];
+		void* (* const eleAlloc)(ut_fw_ElementPool);
+		void (* const eleRec)(ut_fw_ElementPool,void const * const);
+		int (* const poolInc)(ut_fw_ElementPool,const unsigned n_eles, const size_t s_ele);
+		long (* const poolDec)(ut_fw_ElementPool);
+		int (* const destory)(ut_fw_ElementPool*);
+		void (* const showInfo)(ut_fw_ElementPool);
+	}const * o;
 };
 
-extern ut_fw_ElementPool* newPool(size_t size_element,unsigned n_element,unsigned n_auto_inc,unsigned short n_max_blocks);
+extern ut_fw_ElementPool newPool(size_t size_element,unsigned n_element,unsigned n_auto_inc,unsigned short n_max_blocks);
 
+typedef struct _ut_fw_PoolsDaemon ut_fw_PoolsDaemon;
+struct _ut_fw_PoolsDaemon{
+	struct _daemon const* d;
+	struct _ut_fw_PoolsDaemon_op{
+		void (* const gc)(ut_fw_PoolsDaemon*);
+		void (* const append)(ut_fw_PoolsDaemon*,ut_fw_ElementPool*);
+		void (* const remove)(ut_fw_PoolsDaemon*, ut_fw_ElementPool*);
+		int (* const destory)(ut_fw_PoolsDaemon*);
+	}const * o;
+};
+
+extern ut_fw_PoolsDaemon newPoolsDaemon();
 //#define Element ut_fw_Element
 //#define ElementPool ut_fw_ElementPool
 #endif /* FLYWEIGHT_H_ */
