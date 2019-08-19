@@ -29,9 +29,9 @@ struct _pool{
 	const size_t s_ele;
 	const unsigned int n_init;
 	const unsigned int n_auto_inc;
-	volatile atomic_uint n_left; // @suppress("Type cannot be resolved")
+//	volatile atomic_uint n_left; // @suppress("Type cannot be resolved")
 
-	volatile atomic_ushort n_blocks; // @suppress("Type cannot be resolved")
+	unsigned short n_blocks; // @suppress("Type cannot be resolved")
 	const unsigned short n_max_blocks;
 	intptr_t es;
 	intptr_t ee;
@@ -40,11 +40,16 @@ struct _pool{
 
 
 
-static inline void* pop(volatile atomic_intptr_t* const top){ // @suppress("Type cannot be resolved")
-	intptr_t e=*top;
-	while(*((intptr_t*)e)&&!atomic_compare_exchange_week(top,&e,*((intptr_t*)e)));
-
-	return *((intptr_t*)e)?(void*)e:NULL;
+static inline void* pop(struct _pool* pool){ // @suppress("Type cannot be resolved")
+	intptr_t e=pool->left;
+	while(1){
+		if(e==pool->left_end)
+			return NULL;
+		else if(!*(intptr_t*)e)
+			e=pool->left;
+		else if(atomic_compare_exchange_week(&pool->left,&e,*((intptr_t*)e)))
+			return e;
+	}
 }
 
 //return number of Elements left
@@ -57,8 +62,38 @@ static long poolDec(struct _pool* pool){
 		return -1;
 
 	int n_blk=pool->n_blocks;
-	if (n_blk < 2)
+	if (n_blk < 2){
+		pool->blocks = (intptr_t)b;
 		return -2;
+	}
+
+	//left enough
+	intptr_t *f=pop(pool),*fe,*ff,*e;
+	if(!f){
+		pool->blocks = (intptr_t)b;
+		return 0;
+	}
+	*f=NULL;
+	fe=ff=atomic_exchange(&pool->left,f);
+
+	int i;
+	for(i=0;fe!=pool->left_end&&i<pool->n_auto_inc/2;fe=*fe){
+		if(!*fe)
+			continue;
+		else
+			++i;
+	}
+
+	while(fe!=pool->left_end&&!*fe);
+	e=*fe;
+	*fe=NULL;
+	fe=atomic_exchange(&pool->left_end,fe);
+	*f=ff;
+
+	if(!e){
+		pool->blocks = (intptr_t)b;
+		return 0;
+	}
 
 	struct _bc {
 		Block* addr_blk;
@@ -86,9 +121,11 @@ static long poolDec(struct _pool* pool){
 		bcN->addrs=fb->eles;
 		bcN->addrf=(intptr_t)fb->eles+pool->s_ele*pool->n_init;
 
+
 		//statistics
-		intptr_t* e;
-		while((e=pop(&pool->left))){
+		while(e){
+			if(e!=fe&&!*e)
+				continue;
 			for(int i=0;i<n_blk;++i){
 				if(e>=(intptr_t*)bc[i].addrs&&e<(intptr_t*)bc[i].addrf){
 					*e=(intptr_t)bc[i].h;
@@ -99,6 +136,7 @@ static long poolDec(struct _pool* pool){
 					break;
 				}
 			}
+			e=*e;
 		}
 
 		//sort: full(fb) or not(b)
@@ -107,8 +145,8 @@ static long poolDec(struct _pool* pool){
 		for(int j=n_blk-1,i=j-1;i>-1;--i){
 //			printf("%d:%d ; ",bc[i].cap,bc[i].num);
 			if(pool->n_auto_inc==bc[i].num){
-				bc[i].addrs=fb;
-				fb=bc+i;
+				bc[i].addr_blk->next=fb;
+				fb=bc[i].addr_blk;
 			}else{
 				bc[i].addr_blk->next=b;
 				b=bc[i].addr_blk;
@@ -123,29 +161,15 @@ static long poolDec(struct _pool* pool){
 			}
 		}
 
-		//left enough element
-		while (fb && bcN->num < pool->n_auto_inc/2) {
-			*((intptr_t*) bcN->e)=((struct _bc*)fb)->h;
-			bcN->e =((struct _bc*)fb)->e;
-			bcN->num += pool->n_auto_inc;
-
-			if (!bcN->h)
-				bcN->h = ((struct _bc*)fb)->h;
-
-			((struct _bc*)fb)->addr_blk->next=b;
-			b=((struct _bc*)fb)->addr_blk;
-			fb = ((struct _bc*)fb)->addrs;
-		}
-
-
 		if(bcN->num>0)
-			*(bcN->e)=atomic_exchange(&pool->left,(intptr_t)bcN->h);
-		//free needless blocks
-		while (fb) {
-			free((void*)((struct _bc*)fb)->addr_blk->eles);
-			free(((struct _bc*)fb)->addr_blk);
-			fb = ((struct _bc*)fb)->addrs;
+			*(intptr_t*)atomic_exchange(&pool->left_end,(intptr_t)bcN->e)=(bcN->h);
 
+		n_blk=bcN->num;
+		free(bc);
+		//free needless blocks
+		for (Block* tb=fb;fb;tb=fb=fb->next) {
+			free(tb->eles);
+			free(tb);
 			--(pool->n_blocks);
 		}
 
@@ -154,8 +178,6 @@ static long poolDec(struct _pool* pool){
 
 		pool->blocks=(intptr_t)b; //unlock
 
-		n_blk=bcN->num;
-		free(bc);
 		return n_blk;
 	}else{
 		pool->blocks = (intptr_t)b; //unlock
@@ -214,7 +236,7 @@ static int poolInc(struct _pool* pool,unsigned n_eles,size_t s_ele){
 static void * eleAlloc(struct _pool* pool){
 	void* e;
 	while(1){
-		if((e=pop(&pool->left))){
+		if((e=pop(pool))){
 			void* r = e;
 			return r;
 		}else if(-1>poolInc(pool,pool->n_auto_inc,pool->s_ele))
@@ -284,8 +306,6 @@ ut_fw_ElementPool newPool(size_t size_Element,unsigned n_Element,unsigned n_auto
 			.destory=(int (* const)(ut_fw_ElementPool*))destory,
 			.eleAlloc=(void* (* const )(ut_fw_ElementPool))eleAlloc,
 			.eleRec=(void (*const)(ut_fw_ElementPool,void const * const))eleRec,
-			.poolDec=(long (* const)(ut_fw_ElementPool))poolDec,
-			.poolInc=(int (* const)(ut_fw_ElementPool,const unsigned, const size_t))poolInc,
 			.showInfo=(void (* const)(ut_fw_ElementPool))showInfo
 	};
 	struct _pool* pool=calloc(1,sizeof(struct _pool));
