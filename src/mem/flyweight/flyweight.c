@@ -128,11 +128,11 @@ static long poolDec(struct _pool* pool){
 				continue;
 			for(int i=0;i<n_blk;++i){
 				if(e>=(intptr_t*)bc[i].addrs&&e<(intptr_t*)bc[i].addrf){
+					bc[i].num++;
 					*e=(intptr_t)bc[i].h;
 					bc[i].h=e;
-					bc[i].num++;
 					if(!bc[i].e)
-						bc[i].e=bc[i].h;
+						bc[i].e=e;
 					break;
 				}
 			}
@@ -152,15 +152,17 @@ static long poolDec(struct _pool* pool){
 				b=bc[i].addr_blk;
 
 				if(bc[i].num){
-					bcN->num+=bc[i].num;
-					*bcN->e=(intptr_t)bc[i].h;
-					bcN->e=bc[i].e;
-					if(!bcN->h)
-						bcN->h=bc[i].h;
+					if(bcN->num){
+						bcN->num+=bc[i].num;
+						*bcN->e=(intptr_t)bc[i].h;
+						bcN->e=bc[i].e;
+					}else
+						bcN=bc+i;
 				}
 			}
 		}
 
+		//take back the element cannot be released
 		if(bcN->num>0)
 			*(intptr_t*)atomic_exchange(&pool->left_end,(intptr_t)bcN->e)=(bcN->h);
 
