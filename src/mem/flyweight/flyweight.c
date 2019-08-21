@@ -18,8 +18,6 @@ typedef enum { DISUSED=-2,LOCKED, UNLOCKED } pool_stat;
 typedef struct _BLK{
 	struct _BLK *next;
 	intptr_t eles;			//size = data+next_pointer
-//	size_t s_ele;		//each element size
-//	unsigned int n_eles;
 }Block;
 
 struct _pool{
