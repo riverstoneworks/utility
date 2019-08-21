@@ -100,7 +100,7 @@ static inline void sem(struct _sem **sem){
 		return;
 
 	if(*sem){
-		pool.o->eleRec(pool,*sem);
+		pool.o->eleRec(*sem,pool);
 		*sem=NULL;
 	}else
 		(*sem)=pool.o->eleAlloc(pool);
@@ -114,7 +114,7 @@ static void waiter(Waiter** waiter){
 		return;
 
 	if(*waiter){
-		pool.o->eleRec(pool,*waiter);
+		pool.o->eleRec(*waiter,pool);
 		*waiter=NULL;
 	}else
 		*waiter=pool.o->eleAlloc(pool);

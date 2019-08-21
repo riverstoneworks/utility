@@ -47,8 +47,8 @@ static inline void* pop(struct _pool* pool){ // @suppress("Type cannot be resolv
 			return NULL;
 		else if(!*(intptr_t*)e)
 			e=pool->left;
-		else if(atomic_compare_exchange_week(&pool->left,&e,*((intptr_t*)e)))
-			return e;
+		else if(atomic_compare_exchange_weak(&(pool->left), &e, *((intptr_t*)e)))
+			return (void*)e;
 	}
 }
 
@@ -73,22 +73,22 @@ static long poolDec(struct _pool* pool){
 		pool->blocks = (intptr_t)b;
 		return 0;
 	}
-	*f=NULL;
-	fe=ff=atomic_exchange(&pool->left,f);
+	*f=0;
+	fe=ff=(intptr_t*)atomic_exchange(&pool->left,(intptr_t)f);
 
 	int i;
-	for(i=0;fe!=pool->left_end&&i<pool->n_auto_inc/2;fe=*fe){
+	for(i=0;fe!=(intptr_t*)(pool->left_end)&&i<pool->n_auto_inc/2;fe=(intptr_t*)*fe){
 		if(!*fe)
 			continue;
 		else
 			++i;
 	}
 
-	while(fe!=pool->left_end&&!*fe);
-	e=*fe;
-	*fe=NULL;
-	fe=atomic_exchange(&pool->left_end,fe);
-	*f=ff;
+	while((intptr_t)fe!=pool->left_end&&!*fe);
+	e=*(intptr_t**)fe;
+	*fe=0;
+	fe=(intptr_t*)atomic_exchange(&pool->left_end,(intptr_t)fe);
+	*f=(intptr_t)ff;
 
 	if(!e){
 		pool->blocks = (intptr_t)b;
@@ -136,7 +136,7 @@ static long poolDec(struct _pool* pool){
 					break;
 				}
 			}
-			e=*e;
+			e=*(intptr_t**)e;
 		}
 
 		//sort: full(fb) or not(b)
@@ -164,13 +164,13 @@ static long poolDec(struct _pool* pool){
 
 		//take back the element cannot be released
 		if(bcN->num>0)
-			*(intptr_t*)atomic_exchange(&pool->left_end,(intptr_t)bcN->e)=(bcN->h);
+			*(intptr_t**)atomic_exchange(&pool->left_end,(intptr_t)bcN->e)=(bcN->h);
 
 		n_blk=bcN->num;
 		free(bc);
 		//free needless blocks
 		for (Block* tb=fb;fb;tb=fb=fb->next) {
-			free(tb->eles);
+			free((void*)tb->eles);
 			free(tb);
 			--(pool->n_blocks);
 		}
@@ -203,34 +203,31 @@ static int poolInc(struct _pool* pool,unsigned n_eles,size_t s_ele){
 	}
 
 	Block* blk=malloc(sizeof(Block));
-	if(!blk)
+	if(!blk){
+		pool->blocks=b;
 		return -3;
-
-	if(!(blk->eles=malloc(n_eles*s_ele))){
+	}else if(!(blk->eles=(intptr_t)malloc(n_eles*s_ele))){
 		free(blk);
+		pool->blocks=b;
 		return -3;
+	}else{
+		// end block;
+		intptr_t i=pool->es=(intptr_t)blk->eles;
+		pool->ee=i+s_ele*(n_eles-1);
+		while(i<pool->ee){
+			*((intptr_t*)i)=i+s_ele;
+			i+=s_ele;
+		}
+		*((intptr_t*)i)=(intptr_t)NULL;
+
+		*((intptr_t*)atomic_exchange(&pool->left_end,i))=blk->eles;
+
+		blk->next = (Block*) b;
+		b = (intptr_t) blk;
+
+		pool->n_blocks++;
+		pool->blocks = b;	//unlock
 	}
-
-	intptr_t i=(intptr_t)blk->eles , e=(intptr_t)blk->eles+s_ele*(n_eles-1);
-	while(i<e){
-		*((intptr_t*)i)=i+s_ele;
-		i+=s_ele;
-	}
-	*((intptr_t*)i)=(intptr_t)NULL;
-
-
-	blk->next = (Block*) b;
-	b = (intptr_t) blk;
-
-	// end block;
-	pool->es=(intptr_t)blk->eles;
-	pool->ee=pool->es+(s_ele-1)*n_eles;
-
-	*((intptr_t*)atomic_exchange(&pool->left_end,i))=(intptr_t)blk->eles;
-
-	pool->n_blocks++;
-	pool->blocks = b;	//unlock
-
 	return 0;
 }
 
@@ -246,7 +243,7 @@ static void * eleAlloc(struct _pool* pool){
 	}
 }
 
-static void eleRec(struct _pool* pool,  const void * const d){
+static void eleRec( const void * const d, struct _pool* pool){
 	intptr_t e=(intptr_t)d;
 	if(e>=pool->es&&e<=pool->ee){
 		*((intptr_t*)e)=0;
@@ -256,6 +253,7 @@ static void eleRec(struct _pool* pool,  const void * const d){
 
 }
 
+//free mem immediately!
 static int destory(struct _pool** pool){
 	Block* b=(Block*)(*pool)->blocks,*t;
 	if(b<0)
@@ -283,46 +281,69 @@ static int destoryWithAutoMaintain(struct _pool* pool){
 }
 
 static void showInfo(struct _pool* pool){
-	printf("blocks: %u\n"
-		"max_blocks: %u\n"
-		"auto_inc: %u\n"
-		"head: %p\n"
-		"block: %p\n"
-		"n_element: %d\n"
-		"s_element: %ld\n"
-		"ele: %p\n"
-		"next_block: %p\n\n",
-		pool->n_blocks,
-		pool->n_max_blocks,
-		pool->n_auto_inc,
-		(void*)pool->left,
-		(void*)pool->blocks,
-		pool->n_init,
-		pool->s_ele,
-		((Block*)pool->blocks)->eles,
-		((Block*)pool->blocks)->next);
+//	printf("blocks: %u\n"
+//		"max_blocks: %u\n"
+//		"auto_inc: %u\n"
+//		"head: %p\n"
+//		"block: %p\n"
+//		"n_element: %d\n"
+//		"s_element: %ld\n"
+//		"ele: %p\n"
+//		"next_block: %p\n\n",
+//		pool->n_blocks,
+//		pool->n_max_blocks,
+//		pool->n_auto_inc,
+//		(void*)pool->left,
+//		(void*)pool->blocks,
+//		pool->n_init,
+//		pool->s_ele,
+//		((Block*)pool->blocks)->eles,
+//		((Block*)pool->blocks)->next);
+	printf("test! left: %ld\n",poolDec(pool));
 }
 
 ut_fw_ElementPool newPool(size_t size_Element,unsigned n_Element,unsigned n_auto_inc,unsigned short n_max_blocks){
 	static struct _ut_fw_ElementPool_op OP={
 			.destory=(int (* const)(ut_fw_ElementPool*))destory,
 			.eleAlloc=(void* (* const )(ut_fw_ElementPool))eleAlloc,
-			.eleRec=(void (*const)(ut_fw_ElementPool,void const * const))eleRec,
+			.eleRec=(void (*const)(void const * const, ut_fw_ElementPool))eleRec,
 			.showInfo=(void (* const)(ut_fw_ElementPool))showInfo
 	};
+
 	struct _pool* pool=calloc(1,sizeof(struct _pool));
 	if (pool) {
 		*((unsigned short*)&(pool->n_max_blocks)) = n_max_blocks;
 		*((unsigned int*)&(pool->n_auto_inc)) = n_auto_inc;
-		*((size_t*)&(pool->s_ele))=size_Element<sizeof(void*)?sizeof(void*):size_Element;
+		//the element minsize is sizeof(void*) for next ptr.
+		*((size_t*)&(pool->s_ele))=size_Element<sizeof(intptr_t)?sizeof(intptr_t):size_Element;
 		*((unsigned int*)&(pool->n_init))=n_Element;
-		if(poolInc(pool,n_Element,pool->s_ele))
-			free(pool);
-		pool->stat=UNLOCKED;
+
+		struct _n{struct _n* n;} *xp;
+		if((xp=malloc(sizeof(Block)))){
+			pool->blocks=(intptr_t)xp;
+			((Block*)pool->blocks)->next=NULL;
+
+			if((xp=malloc(pool->s_ele*(n_Element+1)))){
+				pool->left=pool->es =pool->ee = ((Block*)pool->blocks)->eles=(intptr_t)xp;
+				while(pool->ee < pool->es+n_Element*pool->s_ele){
+					*(intptr_t*)(pool->ee)=pool->ee+pool->s_ele;
+					pool->ee+=pool->s_ele;
+				}
+				*(intptr_t*)(pool->ee)=0;
+				pool->left_end=pool->ee;
+				pool->n_blocks=1;
+
+				pool->stat = UNLOCKED;
+
+				return (ut_fw_ElementPool ) { .d = pool, .o = &OP } ;
+			}
+			free((void*)(pool->blocks));
+		}
+		free(pool);
 	}
 
 	return (ut_fw_ElementPool){
-		.d=pool,
+		.d=NULL,
 		.o=&OP
 	};
 }
