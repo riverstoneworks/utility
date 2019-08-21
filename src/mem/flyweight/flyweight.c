@@ -109,14 +109,14 @@ static long poolDec(struct _pool* pool){
 		Block* fb=b;
 		for(int i=0;i<n_blk-1;++i){
 			bc[i].addr_blk=fb;
-			bc[i].addrs=fb->eles;
-			bc[i].addrf=fb->eles+pool->s_ele*pool->n_auto_inc;
+			bc[i].addrs=&fb->eles;
+			bc[i].addrf=&fb->eles+pool->s_ele*pool->n_auto_inc;
 			fb=fb->next;
 		}
 
 		bcN->addr_blk=fb;
-		bcN->addrs=fb->eles;
-		bcN->addrf=fb->eles+pool->s_ele*(pool->n_init+1);
+		bcN->addrs=&fb->eles;
+		bcN->addrf=&fb->eles+pool->s_ele*(pool->n_init+1);
 
 
 		//statistics
@@ -170,12 +170,11 @@ static long poolDec(struct _pool* pool){
 		//free needless blocks
 		for (Block* tb=fb;tb;tb=fb) {
 			fb=fb->next;
-			free((void*)tb->eles);
 			free(tb);
 			--(pool->n_blocks);
 		}
 
-		pool->es=(intptr_t)b->eles;
+		pool->es=(intptr_t)&b->eles;
 		pool->ee=pool->es+((pool->n_blocks>1?pool->n_auto_inc:pool->n_init)-1)*pool->s_ele;
 
 		pool->blocks=(intptr_t)b; //unlock
@@ -202,17 +201,13 @@ static int poolInc(struct _pool* pool,unsigned n_eles,size_t s_ele){
 		return -2;
 	}
 
-	Block* blk=malloc(sizeof(Block));
+	Block* blk=malloc(n_eles*s_ele+sizeof(intptr_t));
 	if(!blk){
-		pool->blocks=b;
-		return -3;
-	}else if(!(blk->eles=(intptr_t)malloc(n_eles*s_ele))){
-		free(blk);
 		pool->blocks=b;
 		return -3;
 	}else{
 		// end block;
-		intptr_t i=pool->es=(intptr_t)blk->eles;
+		intptr_t i=pool->es=(intptr_t)(&blk->eles);
 		pool->ee=i+s_ele*(n_eles-1);
 		while(i<pool->ee){
 			*((intptr_t*)i)=i+s_ele;
@@ -220,7 +215,7 @@ static int poolInc(struct _pool* pool,unsigned n_eles,size_t s_ele){
 		}
 		*((intptr_t*)i)=(intptr_t)NULL;
 
-		*((intptr_t*)atomic_exchange(&pool->left_end,i))=blk->eles;
+		*((intptr_t*)atomic_exchange(&pool->left_end,i))=pool->es;
 
 		blk->next = (Block*) b;
 		b = (intptr_t) blk;
@@ -262,7 +257,6 @@ static int destory(struct _pool** pool){
 		return -1;
 
 	while(b){
-		free((void*)b->eles);
 		t=b->next;
 		free(b);
 		b=t;
@@ -318,26 +312,25 @@ ut_fw_ElementPool newPool(size_t size_Element,unsigned n_Element,unsigned n_auto
 		*((size_t*)&(pool->s_ele))=size_Element<sizeof(intptr_t)?sizeof(intptr_t):size_Element;
 		*((unsigned int*)&(pool->n_init))=n_Element;
 
-		struct _n{struct _n* n;} *xp;
-		if((xp=malloc(sizeof(Block)))){
-			pool->blocks=(intptr_t)xp;
-			((Block*)pool->blocks)->next=NULL;
+		Block* xp;
 
-			if((xp=malloc(pool->s_ele*(n_Element+1)))){
-				pool->left=pool->es =pool->ee = ((Block*)pool->blocks)->eles=(intptr_t)xp;
-				while(pool->ee < pool->es+n_Element*pool->s_ele){
-					*(intptr_t*)(pool->ee)=pool->ee+pool->s_ele;
-					pool->ee+=pool->s_ele;
-				}
-				*(intptr_t*)(pool->ee)=0;
-				pool->left_end=pool->ee;
-				pool->n_blocks=1;
+		if ((xp = malloc(pool->s_ele * (n_Element + 1)))) {
+			pool->blocks = (intptr_t) xp;
+			xp->next = NULL;
+			pool->left = pool->es = pool->ee = (intptr_t) &(xp->eles);
 
-				pool->stat = UNLOCKED;
-
-				return (ut_fw_ElementPool ) { .d = pool, .o = &OP } ;
+			while (pool->ee < pool->es + n_Element * pool->s_ele) {
+				*(intptr_t*) (pool->ee) = pool->ee + pool->s_ele;
+				pool->ee += pool->s_ele;
 			}
-			free((void*)(pool->blocks));
+
+			*(intptr_t*) (pool->ee) = 0;
+			pool->left_end = pool->ee;
+			pool->n_blocks = 1;
+
+			pool->stat = UNLOCKED;
+
+			return (ut_fw_ElementPool ) { .d = pool, .o = &OP } ;
 		}
 		free(pool);
 	}
