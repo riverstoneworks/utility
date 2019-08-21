@@ -76,8 +76,7 @@ static long poolDec(struct _pool* pool){
 	*f=0;
 	fe=ff=(intptr_t*)atomic_exchange(&pool->left,(intptr_t)f);
 
-	int i;
-	for(i=0;fe!=(intptr_t*)(pool->left_end)&&i<pool->n_auto_inc/2;fe=(intptr_t*)*fe){
+	for(int i=1;fe!=(intptr_t*)(pool->left_end)&&i<pool->n_auto_inc/2;fe=(intptr_t*)*fe){
 		if(!*fe)
 			continue;
 		else
@@ -113,36 +112,38 @@ static long poolDec(struct _pool* pool){
 		for(int i=0;i<n_blk-1;++i){
 			bc[i].addr_blk=fb;
 			bc[i].addrs=fb->eles;
-			bc[i].addrf=(intptr_t)fb->eles+pool->s_ele*pool->n_auto_inc;
+			bc[i].addrf=fb->eles+pool->s_ele*pool->n_auto_inc;
 			fb=fb->next;
 		}
 
 		bcN->addr_blk=fb;
 		bcN->addrs=fb->eles;
-		bcN->addrf=(intptr_t)fb->eles+pool->s_ele*pool->n_init;
+		bcN->addrf=fb->eles+pool->s_ele*(pool->n_init+1);
 
 
 		//statistics
 		while(e){
 			if(e!=fe&&!*e)
 				continue;
+
+			e=*(intptr_t**)(f=e);
 			for(int i=0;i<n_blk;++i){
-				if(e>=(intptr_t*)bc[i].addrs&&e<(intptr_t*)bc[i].addrf){
+				if(f>=(intptr_t*)bc[i].addrs&&f<(intptr_t*)bc[i].addrf){
 					bc[i].num++;
-					*e=(intptr_t)bc[i].h;
-					bc[i].h=e;
+					*f=(intptr_t)bc[i].h;
+					bc[i].h=f;
 					if(!bc[i].e)
-						bc[i].e=e;
+						bc[i].e=f;
 					break;
 				}
 			}
-			e=*(intptr_t**)e;
+
 		}
 
 		//sort: full(fb) or not(b)
 		fb=NULL;
 		b=bcN->addr_blk;
-		for(int j=n_blk-1,i=j-1;i>-1;--i){
+		for(int i=n_blk-2;i>-1;--i){
 //			printf("%d:%d ; ",bc[i].cap,bc[i].num);
 			if(pool->n_auto_inc==bc[i].num){
 				bc[i].addr_blk->next=fb;
@@ -169,13 +170,14 @@ static long poolDec(struct _pool* pool){
 		n_blk=bcN->num;
 		free(bc);
 		//free needless blocks
-		for (Block* tb=fb;fb;tb=fb=fb->next) {
+		for (Block* tb=fb;tb;tb=fb) {
+			fb=fb->next;
 			free((void*)tb->eles);
 			free(tb);
 			--(pool->n_blocks);
 		}
 
-		pool->es=(intptr_t)((Block*)pool->blocks)->eles;
+		pool->es=(intptr_t)b->eles;
 		pool->ee=pool->es+((pool->n_blocks>1?pool->n_auto_inc:pool->n_init)-1)*pool->s_ele;
 
 		pool->blocks=(intptr_t)b; //unlock
