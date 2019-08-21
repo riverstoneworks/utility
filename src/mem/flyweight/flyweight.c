@@ -109,14 +109,14 @@ static long poolDec(struct _pool* pool){
 		Block* fb=b;
 		for(int i=0;i<n_blk-1;++i){
 			bc[i].addr_blk=fb;
-			bc[i].addrs=&fb->eles;
-			bc[i].addrf=&fb->eles+pool->s_ele*pool->n_auto_inc;
+			bc[i].addrs=(intptr_t)&fb->eles;
+			bc[i].addrf=(intptr_t)&fb->eles+pool->s_ele*pool->n_auto_inc;
 			fb=fb->next;
 		}
 
 		bcN->addr_blk=fb;
-		bcN->addrs=&fb->eles;
-		bcN->addrf=&fb->eles+pool->s_ele*(pool->n_init+1);
+		bcN->addrs=(intptr_t)&fb->eles;
+		bcN->addrf=(intptr_t)&fb->eles+pool->s_ele*(pool->n_init+1);
 
 
 		//statistics
@@ -314,7 +314,7 @@ ut_fw_ElementPool newPool(size_t size_Element,unsigned n_Element,unsigned n_auto
 
 		Block* xp;
 
-		if ((xp = malloc(pool->s_ele * (n_Element + 1)))) {
+		if ((xp = malloc(pool->s_ele * (n_Element+1)+sizeof(intptr_t)))) {
 			pool->blocks = (intptr_t) xp;
 			xp->next = NULL;
 			pool->left = pool->es = pool->ee = (intptr_t) &(xp->eles);
