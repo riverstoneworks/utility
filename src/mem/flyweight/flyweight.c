@@ -27,7 +27,6 @@ struct _pool{
 	const size_t s_ele;
 	const unsigned int n_init;
 	const unsigned int n_auto_inc;
-//	volatile atomic_uint n_left; // @suppress("Type cannot be resolved")
 
 	unsigned short n_blocks; // @suppress("Type cannot be resolved")
 	const unsigned short n_max_blocks;
@@ -45,13 +44,14 @@ static inline void* pop(struct _pool* pool){ // @suppress("Type cannot be resolv
 			return NULL;
 		else if(!*(intptr_t*)e)
 			e=pool->left;
-		else if(atomic_compare_exchange_weak(&(pool->left), &e, *((intptr_t*)e)))
+		else if(atomic_compare_exchange_weak(&(pool->left), &e, *((intptr_t*)e))){
 			return (void*)e;
+		}
 	}
 }
 
 //return number of Elements left
-static long poolDec(struct _pool* pool){
+static int poolDec(struct _pool* pool){
 	//get lock
 	Block* b = (Block*)pool->blocks;
 	if (b < 0)
@@ -74,11 +74,23 @@ static long poolDec(struct _pool* pool){
 	*f=0;
 	fe=ff=(intptr_t*)atomic_exchange(&pool->left,(intptr_t)f);
 
-	for(int i=1;fe!=(intptr_t*)(pool->left_end)&&i<pool->n_auto_inc/2;fe=(intptr_t*)*fe){
+	int in=1;
+	for(;fe!=(intptr_t*)(pool->left_end)&&in<pool->n_auto_inc/2;fe=(intptr_t*)*fe){
 		if(!*fe)
 			continue;
 		else
-			++i;
+			++in;
+	}
+	for(e=fe;e!=(intptr_t*)(pool->left_end)&&in<(pool->n_auto_inc/2+pool->n_auto_inc);e=(intptr_t*)*e){
+		if(!*e)
+			continue;
+		else
+			++in;
+	}
+	if(in<(pool->n_auto_inc/2+pool->n_auto_inc)){
+		*f=(intptr_t)ff;
+		pool->blocks = (intptr_t)b;
+		return 0;
 	}
 
 	while((intptr_t)fe!=pool->left_end&&!*fe);
@@ -98,7 +110,7 @@ static long poolDec(struct _pool* pool){
 		intptr_t addrf;
 		intptr_t* h;
 		intptr_t* e;
-		unsigned num;
+		size_t num;
 	}*bc;
 
 
@@ -152,7 +164,6 @@ static long poolDec(struct _pool* pool){
 
 				if(bc[i].num){
 					if(bcN->num){
-						bcN->num+=bc[i].num;
 						*bcN->e=(intptr_t)bc[i].h;
 						bcN->e=bc[i].e;
 					}else
@@ -162,24 +173,24 @@ static long poolDec(struct _pool* pool){
 		}
 
 		//take back the element cannot be released
-		if(bcN->num>0)
+		if(bcN->h)
 			*(intptr_t**)atomic_exchange(&pool->left_end,(intptr_t)bcN->e)=(bcN->h);
 
-		n_blk=bcN->num;
 		free(bc);
 		//free needless blocks
+		int n=0;
 		for (Block* tb=fb;tb;tb=fb) {
 			fb=fb->next;
 			free(tb);
-			--(pool->n_blocks);
+			++n;
 		}
 
 		pool->es=(intptr_t)&b->eles;
-		pool->ee=pool->es+((pool->n_blocks>1?pool->n_auto_inc:pool->n_init)-1)*pool->s_ele;
+		pool->ee=pool->es+(pool->n_blocks>1?pool->n_auto_inc:(pool->n_init-1))*pool->s_ele;
 
 		pool->blocks=(intptr_t)b; //unlock
-
-		return n_blk;
+		pool->n_blocks-=n;
+		return n;
 	}else{
 		pool->blocks = (intptr_t)b; //unlock
 		//error: lack of memory
@@ -223,6 +234,7 @@ static int poolInc(struct _pool* pool,unsigned n_eles,size_t s_ele){
 		pool->n_blocks++;
 		pool->blocks = b;	//unlock
 	}
+
 	return 0;
 }
 
@@ -231,8 +243,7 @@ static void * eleAlloc(struct _pool* pool){
 	void* e;
 	while(1){
 		if((e=pop(pool))){
-			void* r = e;
-			return r;
+			return e;
 		}else if(-1>poolInc(pool,pool->n_auto_inc,pool->s_ele))
 			return NULL;
 	}
@@ -240,12 +251,11 @@ static void * eleAlloc(struct _pool* pool){
 
 static void eleRec( const void * const d, struct _pool* pool){
 	intptr_t e=(intptr_t)d;
+	*((intptr_t*)e)=0;
 	if(e>=pool->es&&e<=pool->ee){
-		*((intptr_t*)e)=0;
 		*((intptr_t*)atomic_exchange(&pool->left_end,e))=e;
 	}else
 		*(intptr_t*)e=atomic_exchange(&(pool->left),e);
-
 }
 
 //free mem immediately!
@@ -275,25 +285,24 @@ static int destoryWithAutoMaintain(struct _pool* pool){
 }
 
 static void showInfo(struct _pool* pool){
-//	printf("blocks: %u\n"
-//		"max_blocks: %u\n"
-//		"auto_inc: %u\n"
-//		"head: %p\n"
-//		"block: %p\n"
-//		"n_element: %d\n"
-//		"s_element: %ld\n"
-//		"ele: %p\n"
-//		"next_block: %p\n\n",
-//		pool->n_blocks,
-//		pool->n_max_blocks,
-//		pool->n_auto_inc,
-//		(void*)pool->left,
-//		(void*)pool->blocks,
-//		pool->n_init,
-//		pool->s_ele,
-//		((Block*)pool->blocks)->eles,
-//		((Block*)pool->blocks)->next);
-	printf("test! left: %ld\n",poolDec(pool));
+	printf("blocks num:		%u\n"
+		"max num of blocks:	%u\n"
+		"init ele num:		%d\n"
+		"ele auto inc num:	%u\n"
+		"head:			%p\n"
+		"end:			%p\n"
+		"element size:		%ld\n"
+		"first block:		%p\n"
+		"next block:		%p\n\n",
+		pool->n_blocks,
+		pool->n_max_blocks,
+		pool->n_init,
+		pool->n_auto_inc,
+		(void*)pool->left,
+		(void*)pool->left_end,
+		pool->s_ele,
+		((Block*)pool->blocks),
+		((Block*)pool->blocks)->next);
 }
 
 ut_fw_ElementPool newPool(size_t size_Element,unsigned n_Element,unsigned n_auto_inc,unsigned short n_max_blocks){
@@ -301,6 +310,7 @@ ut_fw_ElementPool newPool(size_t size_Element,unsigned n_Element,unsigned n_auto
 			.destory=(int (* const)(ut_fw_ElementPool*))destory,
 			.eleAlloc=(void* (* const )(ut_fw_ElementPool))eleAlloc,
 			.eleRec=(void (*const)(void const * const, ut_fw_ElementPool))eleRec,
+			.poolDec=(int (*const)(ut_fw_ElementPool))poolDec,
 			.showInfo=(void (* const)(ut_fw_ElementPool))showInfo
 	};
 
