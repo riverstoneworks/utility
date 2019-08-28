@@ -22,18 +22,6 @@ struct _ut_fw_ElementPool{
 
 extern ut_fw_ElementPool newPool(size_t size_element,unsigned n_init,unsigned n_auto_inc,unsigned short n_max_blocks);
 
-typedef struct _ut_fw_PoolsDaemon ut_fw_PoolsDaemon;
-struct _ut_fw_PoolsDaemon{
-	struct _daemon const* d;
-	struct _ut_fw_PoolsDaemon_op{
-		void (* const gc)(ut_fw_PoolsDaemon*);
-		void (* const append)(ut_fw_PoolsDaemon*,ut_fw_ElementPool*);
-		void (* const remove)(ut_fw_PoolsDaemon*, ut_fw_ElementPool*);
-		int (* const destory)(ut_fw_PoolsDaemon*);
-	}const * o;
-};
+typedef enum { DISUSED=-2,LOCKED, UNLOCKED } pool_stat;
 
-extern ut_fw_PoolsDaemon newPoolsDaemon();
-//#define Element ut_fw_Element
-//#define ElementPool ut_fw_ElementPool
 #endif /* FLYWEIGHT_H_ */

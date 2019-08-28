@@ -11,9 +11,7 @@
 
 #include <utility/mem/flyweight.h>
 #define ElementPool ut_fw_ElementPool
-#define ele_addr_ind(pool,blk,ind) (((intptr_t)blk->eles)+pool->s_ele*(ind))
-
-typedef enum { DISUSED=-2,LOCKED, UNLOCKED } pool_stat;
+//#define ele_addr_ind(pool,blk,ind) (((intptr_t)blk->eles)+pool->s_ele*(ind))
 
 typedef struct _BLK{
 	struct _BLK *next;
@@ -21,9 +19,12 @@ typedef struct _BLK{
 }Block;
 
 struct _pool{
+	struct _pool* next;
+	volatile atomic_char stat; // @suppress("Type cannot be resolved")
 	volatile atomic_intptr_t blocks; // @suppress("Type cannot be resolved")
 	volatile atomic_intptr_t left; // @suppress("Type cannot be resolved")
 	volatile atomic_intptr_t left_end; // @suppress("Type cannot be resolved")
+
 	const size_t s_ele;
 	const unsigned int n_init;
 	const unsigned int n_auto_inc;
@@ -32,7 +33,6 @@ struct _pool{
 	const unsigned short n_max_blocks;
 	intptr_t es;
 	intptr_t ee;
-	volatile atomic_char stat; // @suppress("Type cannot be resolved")
 };
 
 
@@ -276,7 +276,6 @@ static int destory(struct _pool** pool){
 	return 0;
 }
 
-static ut_fw_PoolsDaemon daemon={NULL,NULL};
 
 static int destoryWithAutoMaintain(struct _pool* pool){
 //	pool->blocks
