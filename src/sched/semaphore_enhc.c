@@ -96,7 +96,7 @@ unsigned long showVal(struct _sem *sem){
 static inline void sem(struct _sem **sem){
 	static ut_fw_ElementPool pool={NULL,NULL};
 	if(!pool.d&&
-			!(pool=newPool(sizeof(struct _sem),8,8,8)).d)
+			!(pool=newPool(sizeof(struct _sem),8,8,8,NULL)).d)
 		return;
 
 	if(*sem){
@@ -110,7 +110,7 @@ static inline void sem(struct _sem **sem){
 static void waiter(Waiter** waiter){
 	static ut_fw_ElementPool pool={NULL,NULL};
 	if(!pool.d&&
-			!(pool=newPool(sizeof(Waiter),8,8,8)).d)
+			!(pool=newPool(sizeof(Waiter),8,8,8,NULL)).d)
 		return;
 
 	if(*waiter){

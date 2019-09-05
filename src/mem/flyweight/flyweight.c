@@ -8,10 +8,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdatomic.h>
-
+#include <threads.h>
 #include <utility/mem/flyweight.h>
 #define ElementPool ut_fw_ElementPool
-//#define ele_addr_ind(pool,blk,ind) (((intptr_t)blk->eles)+pool->s_ele*(ind))
+enum { DISUSED=-2,LOCKED, FREE };
 
 typedef struct _BLK{
 	struct _BLK *next;
@@ -20,7 +20,7 @@ typedef struct _BLK{
 
 struct _pool{
 	struct _pool* next;
-	volatile atomic_char stat; // @suppress("Type cannot be resolved")
+	volatile char stat; // @suppress("Type cannot be resolved")
 	volatile atomic_intptr_t blocks; // @suppress("Type cannot be resolved")
 	volatile atomic_intptr_t left; // @suppress("Type cannot be resolved")
 	volatile atomic_intptr_t left_end; // @suppress("Type cannot be resolved")
@@ -260,6 +260,10 @@ static void eleRec( const void * const d, struct _pool* pool){
 
 //free mem immediately!
 static int destory(struct _pool** pool){
+	if((*pool)->next){
+		(*pool)->stat=DISUSED;
+		return 1;
+	}
 	Block* b=(Block*)(*pool)->blocks,*t;
 	if(b<0)
 		return -1;
@@ -273,13 +277,6 @@ static int destory(struct _pool** pool){
 	}
 	free(*pool);
 	*pool=NULL;
-	return 0;
-}
-
-
-static int destoryWithAutoMaintain(struct _pool* pool){
-//	pool->blocks
-
 	return 0;
 }
 
@@ -304,7 +301,22 @@ static void showInfo(struct _pool* pool){
 		((Block*)pool->blocks)->next);
 }
 
-ut_fw_ElementPool newPool(size_t size_Element,unsigned n_Element,unsigned n_auto_inc,unsigned short n_max_blocks){
+//grobal auto manager
+static ut_fw_manager atm={0,0};
+
+int init_default_atm(launch l){
+	if(atm.d){
+		return 1;
+	}if((atm=newFwManager(l)).d)
+		return 0;
+	else
+		return -1;
+}
+void destory_global_atm(){
+	if(atm.d)
+		atm.o->destory(&atm);
+}
+ut_fw_ElementPool newPool(size_t size_Element,unsigned n_Element,unsigned n_auto_inc,unsigned short n_max_blocks, bool auto_manage){
 	static struct _ut_fw_ElementPool_op OP={
 			.destory=(int (* const)(ut_fw_ElementPool*))destory,
 			.eleAlloc=(void* (* const )(ut_fw_ElementPool))eleAlloc,
@@ -313,8 +325,8 @@ ut_fw_ElementPool newPool(size_t size_Element,unsigned n_Element,unsigned n_auto
 			.showInfo=(void (* const)(ut_fw_ElementPool))showInfo
 	};
 
-	struct _pool* pool=calloc(1,sizeof(struct _pool));
-	if (pool) {
+	struct _pool* pool;
+	if (size_Element*n_Element&&(pool=calloc(1,sizeof(struct _pool)))) {
 		*((unsigned short*)&(pool->n_max_blocks)) = n_max_blocks;
 		*((unsigned int*)&(pool->n_auto_inc)) = n_auto_inc;
 		//the element minsize is sizeof(void*) for next ptr.
@@ -337,8 +349,18 @@ ut_fw_ElementPool newPool(size_t size_Element,unsigned n_Element,unsigned n_auto
 			pool->left_end = pool->ee;
 			pool->n_blocks = 1;
 
-			pool->stat = UNLOCKED;
+			pool->stat = FREE;
 
+			if(auto_manage){
+				if(!atm.d){
+					atm=newFwManager(NULL);
+				}
+				if(!atm.d||atm.o->append((ut_fw_ElementPool){pool},atm)){
+					free (xp);
+					free (pool);
+					pool=NULL;
+				}
+			}
 			return (ut_fw_ElementPool ) { .d = pool, .o = &OP } ;
 		}
 		free(pool);
@@ -349,77 +371,5 @@ ut_fw_ElementPool newPool(size_t size_Element,unsigned n_Element,unsigned n_auto
 		.o=&OP
 	};
 }
-//
-//struct _daemon{
-//	struct _pp{
-//		volatile struct _pool* pool;
-//		struct _pp* next;
-//	}*PQ;
-//};
-//
-//
-//static void destoryDaemon(ut_fw_PoolsDaemon* daemon){
-//	free(daemon->d);
-//	*daemon=(ut_fw_PoolsDaemon){NULL,NULL};
-//}
-//
-//static ut_fw_ElementPool pp={NULL,NULL};
-//static int append(ut_fw_PoolsDaemon* daemon, struct _pool* pool){
-//	if(pp.d||(pp=newPool(sizeof(struct _pp),32,32,8))){
-//		struct _pp* t=pp.o->eleAlloc(&pp);
-//		if(t){
-//			t->pool = pool;
-//			t->next = daemon->d->PQ;
-//			daemon->d->PQ = t;
-//			return 0;
-//		}
-//	}
-//	return -1;
-//}
-//
-//static int remove(struct _daemon* daemon, struct _pool* pool){
-//	struct _pp* p=daemon->PQ;
-//	while(p&&pool!=p->pool)
-//		p=p->next;
-//	if(p)
-//		p->pool=NULL;
-//	return 0;
-//}
-//
-//static int gc(struct _daemon* daemon){
-//	struct _pp* p=daemon->PQ;
-//	while(p){
-//		struct _pool* pl=p->pool;
-//		if(pl)
-//			poolDec(pl);
-//		else
-//	}
-//}
-//ut_fw_PoolsDaemon newPoolsDaemon(){
-//	static struct _ut_fw_PoolsDaemon_op OP={
-//			.destory=destoryDaemon,
-//			.append=append,
-//			.remove=remove,
-//			.gc=NULL
-//	};
-//	return (ut_fw_PoolsDaemon){
-//		.d=calloc(1,sizeof(struct _pp*)),
-//		.o=&OP
-//	};
-//}
-//
-//ut_fw_ElementPool newPoolWithAutoMaintan(size_t size_Element,unsigned n_Element,unsigned n_auto_inc,unsigned short n_max_blocks){
-//
-//	if(daemon.d||(daemon=newPoolsDaemon()).d){
-//		ut_fw_ElementPool np=newPool(size_Element,n_Element,n_auto_inc,n_max_blocks);
-//		if(np.d)
-//			if(daemon.o->append(&daemon,np.d))
-//				np.o->destory(&np);
-//			else
-//				return np;
-//	}
-//
-//	return (ut_fw_ElementPool){NULL,NULL};
-//}
 
 #undef ElementPool
